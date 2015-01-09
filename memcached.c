@@ -22,6 +22,7 @@
 #include <sys/uio.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <debug.h>
 
 /* some POSIX systems need the following definition
  * to get mlockall flags out of sys/mman.h.  */
@@ -837,10 +838,19 @@ static void complete_nread_ascii(conn *c) {
     c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
+    //////////////////////////////
+    // TODO: save (it->key, it->data) to storage layer, then free this item to
+    // free-list.
+    dbg("have finished storing item with comm %d\n", comm);
+    dump_item(it);
+    ////////////////////////
+
     if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) != 0) {
         out_string(c, "CLIENT_ERROR bad data chunk");
     } else {
-      ret = store_item(it, comm, c);
+      // deleted this line.
+      // ret = store_item(it, comm, c);
+      ret = STORED;
 
 #ifdef ENABLE_DTRACE
       uint64_t cas = ITEM_get_cas(it);
@@ -2724,10 +2734,27 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 return;
             }
 
+            //////////////////////////
+            //  TODO: allocate an item big enough, init some fields, read (key) from storage layer
+            int flags = 0;
+            int exptime = 100;
+            int data_len = 6;
+            int vlen = data_len + 2;;
+            it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
+            memcpy(ITEM_data(it), "valuex\r\n", vlen);
+            dbg("allocate an item size = %ld\n", ITEM_ntotal(it));
+            dump_item(it);
+            assert(it != NULL);
+
+            /////////// delete these lines.
+            /*
             it = item_get(key, nkey);
             if (settings.detail_enabled) {
                 stats_prefix_record_get(key, nkey, NULL != it);
             }
+            */
+            ////////////////////////////
+
             if (it) {
                 if (i >= c->isize) {
                     item **new_list = realloc(c->ilist, sizeof(item *) * c->isize * 2);
@@ -2827,6 +2854,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
          * of tokens.
          */
         if(key_token->value != NULL) {
+            dbg("got extra string %s at end of key token...\n", key_token->value);
             ntokens = tokenize_command(key_token->value, tokens, MAX_TOKENS);
             key_token = tokens;
         }
@@ -2916,6 +2944,8 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
         stats_prefix_record_set(key, nkey);
     }
 
+    ///////////////////////////////
+    // Have extended item_alloc() to grab an new item big enough to hold data,
     it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
 
     if (it == 0) {
@@ -3164,7 +3194,21 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
         stats_prefix_record_delete(key, nkey);
     }
 
+    ////////////////////////////////
+    // TODO:  pass the key to storage layer.
+    dbg("will delete key %s, nkey %ld\n", key, nkey);
+    int flags = 0;
+    int exptime = 100;
+    int data_len = 6;
+    int vlen = data_len + 2;;
+    it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
+    assert(it != NULL);
+
+    /////////// rm this line.
+    /*
     it = item_get(key, nkey);
+    */
+    //////////////////////
     if (it) {
         MEMCACHED_COMMAND_DELETE(c->sfd, ITEM_key(it), it->nkey);
 
@@ -3172,7 +3216,11 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
         c->thread->stats.slab_stats[it->slabs_clsid].delete_hits++;
         pthread_mutex_unlock(&c->thread->stats.mutex);
 
+        ////////////////////
+        /*
         item_unlink(it);
+        */
+        ///////////////////
         item_remove(it);      /* release our reference */
         out_string(c, "DELETED");
     } else {
@@ -3998,6 +4046,9 @@ static void drive_machine(conn *c) {
                     while (c->ileft > 0) {
                         item *it = *(c->icurr);
                         assert((it->it_flags & ITEM_SLABBED) == 0);
+
+                        //////////////////////////
+                        //  free the item to a slab's free-list.
                         item_remove(it);
                         c->icurr++;
                         c->ileft--;

@@ -432,6 +432,8 @@ void item_remove(item *item) {
     hv = hash(ITEM_key(item), item->nkey, 0);
 
     item_lock(hv);
+    dbg("will remove item of hv = %d\n", hv);
+    dump_item(item);
     do_item_remove(item);
     item_unlock(hv);
 }

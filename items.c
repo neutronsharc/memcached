@@ -81,6 +81,8 @@ static size_t item_make_header(const uint8_t nkey, const int flags, const int nb
                      char *suffix, uint8_t *nsuffix) {
     /* suffix is defined at 40 chars elsewhere.. */
     *nsuffix = (uint8_t) snprintf(suffix, 40, " %d %d\r\n", flags, nbytes - 2);
+    //dbg("sizeof(time_t) = %ld, sizeof(item) = %ld, nkey = %d, nsuffix = %d, nbytes = %d\n",
+    //    sizeof(rel_time_t), sizeof(item), nkey, *nsuffix, nbytes);
     return sizeof(item) + nkey + *nsuffix + nbytes;
 }
 
@@ -97,6 +99,29 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     unsigned int id = slabs_clsid(ntotal);
     if (id == 0)
         return 0;
+
+    //////////////////////////////////
+    dbg("will alloc an item of size %ld\n", ntotal);
+    mutex_lock(&cache_lock);
+    it = slabs_alloc(ntotal, id);
+    assert(it != NULL);
+    it->refcount = 1;
+    pthread_mutex_unlock(&cache_lock);
+
+    it->next = it->prev = it->h_next = 0;
+    it->slabs_clsid = id;
+    it->it_flags = 0;  // this is the FLAG bits (LINKED, SLABBED, etc..)
+    it->nkey = nkey;
+    it->nbytes = nbytes;
+    memcpy(ITEM_key(it), key, nkey);
+    it->exptime = exptime;
+    memcpy(ITEM_suffix(it), suffix, (size_t)nsuffix);
+    it->nsuffix = nsuffix;
+    dbg("got an item total size %ld, item's data offset = %ld\n",
+        ntotal, (char*)&(it->data[0]) - (char*)it);
+    return it;
+
+    //////////////////////////////////
 
     mutex_lock(&cache_lock);
     /* do a quick check if we have any expired items in the tail.. */

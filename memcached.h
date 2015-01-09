@@ -17,11 +17,13 @@
 #include <netdb.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "protocol_binary.h"
 #include "cache.h"
 
 #include "sasl_defs.h"
+#include "debug.h"
 
 /** Maximum length of a key. */
 #define KEY_MAX_LENGTH 250
@@ -487,6 +489,23 @@ static inline int mutex_lock(pthread_mutex_t *mutex)
 {
     while (pthread_mutex_trylock(mutex));
     return 0;
+}
+
+static inline void dump_item(item* it) {
+    char sfx[128];
+    char data[128];
+    int n = it->nsuffix >= 127 ? 127 : it->nsuffix;
+    strncpy(sfx, ITEM_suffix(it), n);
+    sfx[n] = 0;
+    n = it->nbytes >= 127 ? 127 : it->nbytes;
+    strncpy(data, ITEM_data(it), n);
+    data[n] = 0;
+
+    fprintf(stderr, "item total %ld bytes, key \"%s\", nkey %d, value \"%s\" "
+        "nbytes %d, suffix \"%s\", nsuffix  %d, flags %d\n",
+        ITEM_ntotal(it), ITEM_key(it), it->nkey, data, it->nbytes,
+        sfx, it->nsuffix, it->it_flags);
+    fflush(stderr);
 }
 
 #define mutex_unlock(x) pthread_mutex_unlock(x)

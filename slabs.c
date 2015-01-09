@@ -247,6 +247,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
         ret = NULL;
     } else if (p->sl_curr != 0) {
         /* return off our freelist */
+        dbg("slab %d, size %ld: grab an item from freelist\n", id, size);
         it = (item *)p->slots;
         p->slots = it->next;
         if (it->next) it->next->prev = 0;
@@ -254,6 +255,7 @@ static void *do_slabs_alloc(const size_t size, unsigned int id) {
         ret = (void *)it;
     } else {
         /* if we recently allocated a whole page, return from that */
+        dbg("slab %d, size %ld: get an item from the end page\n", id, size);
         assert(p->end_page_ptr != NULL);
         ret = p->end_page_ptr;
         if (--p->end_page_free != 0) {
@@ -277,6 +279,7 @@ static void do_slabs_free(void *ptr, const size_t size, unsigned int id) {
     slabclass_t *p;
     item *it;
 
+    dbg("will free item at slab %d, size %ld\n", id, size);
     assert(((item *)ptr)->slabs_clsid == 0);
     assert(id >= POWER_SMALLEST && id <= power_largest);
     if (id < POWER_SMALLEST || id > power_largest)
