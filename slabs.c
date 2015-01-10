@@ -21,6 +21,8 @@
 #include <assert.h>
 #include <pthread.h>
 
+#include "debug.h"
+
 /* powers-of-N allocation structures */
 
 typedef struct {

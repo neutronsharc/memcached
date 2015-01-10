@@ -8,6 +8,9 @@ testapp_SOURCES = testapp.c util.c util.h
 
 timedrun_SOURCES = timedrun.c
 
+CFLAGS += -I/home/shawn/code/rocksdb/include
+LIBS += /home/shawn/code/rocksdb/librocksdb.a -lbz2 -lpthread -lsnappy -lz
+
 memcached_SOURCES = memcached.c memcached.h \
                     hash.c hash.h \
                     slabs.c slabs.h \
@@ -16,7 +19,8 @@ memcached_SOURCES = memcached.c memcached.h \
                     thread.c daemon.c \
                     stats.c stats.h \
                     util.c util.h \
-                    trace.h cache.h sasl_defs.h
+                    trace.h cache.h sasl_defs.h \
+                    storage_rocksdb.c storage_rocksdb.h debug.h
 
 if BUILD_CACHE
 memcached_SOURCES += cache.c

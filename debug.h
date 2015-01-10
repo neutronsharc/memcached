@@ -11,26 +11,31 @@
 #define MYDBG 1
 
 #if MYDBG
-#define dbg(fmt, ...)                          \
-  do {                                             \
+
+#define dbg(fmt, ...)                                                 \
+  do {                                                                \
     fprintf(stderr, "%s (%d) " fmt, __func__, __LINE__, __VA_ARGS__); \
-    fflush(stderr);                                \
+    fflush(stderr);                                                   \
   } while (0)
+
 #else
-#define dbg(fmt, args...)
+
+#define dbg(fmt, ...)
+
 #endif
 
-#define error(fmt, ...)                                 \
-  do {                                                      \
-    fprintf(stderr, "%s: Error!!  " fmt, __func__, __VA_ARGS__); \
-    fflush(stderr);                                         \
+#define error(fmt, ...)                        \
+  do {                                         \
+    fprintf(stderr, "%s (%d) : Error!!  " fmt, \
+        __func__, __LINE__, __VA_ARGS__);      \
+    fflush(stderr);                            \
   } while (0)
 
 #define err(fmt, ...) error(fmt, __VA_ARGS__)
 
-#define err_exit(fmt, ...) \
+#define err_exit(fmt, ...)     \
   do {                         \
-    error(fmt, __VA_ARGS__);        \
+    error(fmt, __VA_ARGS__);   \
     assert(0);                 \
   } while (0)
 

@@ -13,6 +13,8 @@
 #include <time.h>
 #include <assert.h>
 
+#include "debug.h"
+
 /* Forward Declarations */
 static void item_link_q(item *it);
 static void item_unlink_q(item *it);

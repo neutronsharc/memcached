@@ -15,6 +15,8 @@
 #include <atomic.h>
 #endif
 
+#include "debug.h"
+
 #define ITEMS_PER_ALLOC 64
 
 /* An item in the connection queue. */
