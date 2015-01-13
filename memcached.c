@@ -2764,6 +2764,8 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
               memcpy(ITEM_data(it), value, vlen);
               dbg("forge an item size = %ld\n", ITEM_ntotal(it));
               //dump_item(it);
+              // "value" is malloc()ed by the Get() method internally. Should
+              // free after use.
               free(value);
             }
 
@@ -5235,7 +5237,7 @@ int main (int argc, char **argv) {
     }
 
     ///////////////////// rocksdb test
-    char* dbpath = "/tmp/rdb1";
+    char* dbpath = "/mnt/test/rdb1";
     rocksdb = InitRocksDB(dbpath);
     dbg("init rocksdb %s ret %p\n", dbpath, (void*)rocksdb);
     ////////////////////////////////////
@@ -5325,7 +5327,6 @@ int main (int argc, char **argv) {
       rocksdb = NULL;
     }
     ////////////////////
-
 
     stop_assoc_maintenance_thread();
 

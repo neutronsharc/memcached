@@ -17,27 +17,39 @@ RocksDB* InitRocksDB(char *dbpath) {
   memset(db, 0, sizeof(RocksDB));
   strncpy(db->dbpath, dbpath, 1024);
 
-  // Prepare DB options.
+  // step 1: prepare DB options.
   db->options = rocksdb_options_create();
   rocksdb_options_set_create_if_missing(db->options, 1);
-  // Disable compression, since user data is already compressed.
+
+  // 0 to disable compression, since user data is already compressed.
   rocksdb_options_set_compression(db->options, 0);
+
+  // DB will have up to this many open files at a time.  Must be within rlimit
+  // of ths system.
+  rocksdb_options_set_max_open_files(db->options, 4000);
+
+  // config write buffer.
+  rocksdb_options_set_write_buffer_size(db->options, 1024L * 1024);
+  rocksdb_options_set_max_write_buffer_number(db->options, 32);
 
   long cpus = sysconf(_SC_NPROCESSORS_ONLN);
   rocksdb_options_increase_parallelism(db->options, (int)(cpus));
   dbg("Use %ld cpu cores\n", cpus);
+
+  // compaction style.
   rocksdb_options_optimize_level_style_compaction(db->options, 0);
 
-  // Prepare write options.
+  // step 2: prepare write options.
   db->write_options = rocksdb_writeoptions_create();
+
   // Disable WAL log since we are doing caching, and crash in middle of write
   // isn't a problem.
   rocksdb_writeoptions_disable_WAL(db->write_options, 1);
 
-  // Prepare read options.
+  // step 3: prepare read options.
   db->read_options = rocksdb_readoptions_create();
 
-  // open DB
+  // step 4: open DB
   char *err = NULL;
   db->db = rocksdb_open(db->options, dbpath, &err);
   assert(!err);
