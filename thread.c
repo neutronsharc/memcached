@@ -435,7 +435,7 @@ void item_remove(item *item) {
 
     item_lock(hv);
     dbg("will remove item of hv = %d\n", hv);
-    dump_item(item);
+    //dump_item(item);
     do_item_remove(item);
     item_unlock(hv);
 }

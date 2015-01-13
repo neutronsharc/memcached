@@ -20,6 +20,9 @@ RocksDB* InitRocksDB(char *dbpath) {
   // Prepare DB options.
   db->options = rocksdb_options_create();
   rocksdb_options_set_create_if_missing(db->options, 1);
+  // Disable compression, since user data is already compressed.
+  rocksdb_options_set_compression(db->options, 0);
+
   long cpus = sysconf(_SC_NPROCESSORS_ONLN);
   rocksdb_options_increase_parallelism(db->options, (int)(cpus));
   dbg("Use %ld cpu cores\n", cpus);
@@ -27,6 +30,9 @@ RocksDB* InitRocksDB(char *dbpath) {
 
   // Prepare write options.
   db->write_options = rocksdb_writeoptions_create();
+  // Disable WAL log since we are doing caching, and crash in middle of write
+  // isn't a problem.
+  rocksdb_writeoptions_disable_WAL(db->write_options, 1);
 
   // Prepare read options.
   db->read_options = rocksdb_readoptions_create();
@@ -49,21 +55,68 @@ void CloseRocksDB(RocksDB* db) {
   free(db);
 }
 
-/* Write given object to RocksDB. */
-/* Return: number of bytes written. */
-int Put(RocksDB *db, item *it) {
+
+/**
+ *  Write given object to RocksDB.
+ *  Return: 0 on success, none-0 otherwise.
+ */
+int Put(RocksDB *db, char* key, int keylen, char* value, int vlen) {
+  char *err = NULL;
+  rocksdb_put(db->db,
+              db->write_options,
+              key,
+              keylen,
+              value,
+              vlen,
+              &err);
+  if (err) {
+    err("Put() object %s failed: %s\n", key, err);
+    return -1;
+  }
   return 0;
 }
 
 /* Read given object from RocksDB. */
-/* Return: item */
-item* Get(RocksDB *db, char *key, int keylen) {
-  return NULL;
+/* Return: malloced memory containing the data. */
+char* Get(RocksDB *db, char *key, int keylen, size_t *vlen) {
+  char *err = NULL;
+  char *value = rocksdb_get(db->db,
+                            db->read_options,
+                            key,
+                            keylen,
+                            vlen,
+                            &err);
+  if (err) {
+    err("Get() obj %s failed: %s\n", key, err);
+    return NULL;
+  }
+  return value;
 }
 
-/* Delete object with given name from from RocksDB. */
-/* Return: 0 on success, non-0 otherwise. */
+/**
+ *  Delete object with given name from from RocksDB.
+ *  Return: object size in bytes if the obj is found and deleted.
+ *          -1 otherwise.
+ */
 int Delete(RocksDB *db, char *key, int keylen) {
-  return 0;
+  size_t vlen = 0;
+  char* value = Get(db, key, keylen, &vlen);
+  if (!value) {
+    dbg("object %s not exist, returning right away...\n", key);
+    return -1;
+  }
+  free(value);
+
+  char *err = NULL;
+  rocksdb_delete(db->db,
+                 db->write_options,
+                 key,
+                 keylen,
+                 &err);
+  if (err) {
+    err("Delete() object %s failed: %s\n", key, err);
+    return -1;
+  }
+  return (int)vlen;
 }
 

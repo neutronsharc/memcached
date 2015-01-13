@@ -48,6 +48,8 @@
 #include <sysexits.h>
 #include <stddef.h>
 
+#include "storage_rocksdb.h"
+
 /* FreeBSD 4.x doesn't have IOV_MAX exposed. */
 #ifndef IOV_MAX
 #if defined(__FreeBSD__) || defined(__APPLE__)
@@ -109,6 +111,9 @@ volatile int slab_rebalance_signal;
 /** file scope variables **/
 static conn *listen_conn = NULL;
 static struct event_base *main_base;
+
+/* RocksDB storage backend. */
+RocksDB *rocksdb = NULL;
 
 enum transmit_result {
     TRANSMIT_COMPLETE,   /** All done writing. */
@@ -831,7 +836,7 @@ static void complete_nread_ascii(conn *c) {
     assert(c != NULL);
 
     item *it = c->item;
-    int comm = c->cmd;
+    //int comm = c->cmd;
     enum store_item_type ret;
 
     pthread_mutex_lock(&c->thread->stats.mutex);
@@ -841,15 +846,24 @@ static void complete_nread_ascii(conn *c) {
     //////////////////////////////
     // TODO: save (it->key, it->data) to storage layer, then free this item to
     // free-list.
-    dbg("have finished storing item with comm %d\n", comm);
-    dump_item(it);
+    Put(rocksdb, ITEM_key(it), it->nkey, ITEM_data(it), it->nbytes);
+    dbg("have finished storing item with comm %d\n", c->cmd);
+    //dump_item(it);
     ////////////////////////
 
     if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) != 0) {
         out_string(c, "CLIENT_ERROR bad data chunk");
     } else {
-      // deleted this line.
+      /////////////// deleted this line.
       // ret = store_item(it, comm, c);
+      //////////////////////////////
+      ////////// new lines to update stats
+      STATS_LOCK();
+      stats.curr_bytes += (it->nkey + it->nbytes);
+      stats.curr_items += 1;
+      stats.total_items += 1;
+      STATS_UNLOCK();
+      /////////////////////////////////////////
       ret = STORED;
 
 #ifdef ENABLE_DTRACE
@@ -2735,16 +2749,23 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
             }
 
             //////////////////////////
-            //  TODO: allocate an item big enough, init some fields, read (key) from storage layer
-            int flags = 0;
-            int exptime = 100;
-            int data_len = 6;
-            int vlen = data_len + 2;;
-            it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
-            memcpy(ITEM_data(it), "valuex\r\n", vlen);
-            dbg("allocate an item size = %ld\n", ITEM_ntotal(it));
-            dump_item(it);
-            assert(it != NULL);
+            //  TODO: read from backend the item,
+            //  then allocate an item big enough, init some fields, read (key) from storage layer
+            size_t vlen = 0;
+            char *value = Get(rocksdb, key, nkey, &vlen);
+            if (!value) {
+              dbg("object %s not exist in storage...\n", key);
+              it = NULL;
+            } else {
+              int flags = 0;
+              int exptime = 100;
+              it = item_alloc(key, nkey, flags, realtime(exptime), (int)vlen);
+              assert(it != NULL);
+              memcpy(ITEM_data(it), value, vlen);
+              dbg("forge an item size = %ld\n", ITEM_ntotal(it));
+              //dump_item(it);
+              free(value);
+            }
 
             /////////// delete these lines.
             /*
@@ -2834,7 +2855,10 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 c->thread->stats.slab_stats[it->slabs_clsid].get_hits++;
                 c->thread->stats.get_cmds++;
                 pthread_mutex_unlock(&c->thread->stats.mutex);
-                item_update(it);
+                ////  deleted line: no need to update this item in LRU, since we
+                //    are using storage backend to store data.
+                //item_update(it);
+                //////////////////
                 *(c->ilist + i) = it;
                 i++;
 
@@ -3166,6 +3190,7 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
     char *key;
     size_t nkey;
     item *it;
+    item dummyItem;
 
     assert(c != NULL);
 
@@ -3197,14 +3222,26 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
     ////////////////////////////////
     // TODO:  pass the key to storage layer.
     dbg("will delete key %s, nkey %ld\n", key, nkey);
-    int flags = 0;
-    int exptime = 100;
-    int data_len = 6;
-    int vlen = data_len + 2;;
-    it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
-    assert(it != NULL);
-
-    /////////// rm this line.
+    int vlen = Delete(rocksdb, key, nkey);
+    if (vlen < 0) {
+      dbg("the obj %s not exist\n", key);
+      it = NULL;
+    } else {
+      it = &dummyItem;
+      memset(it, 0, sizeof(*it));
+      it->nkey = nkey;
+      it->nbytes = vlen;
+      it->slabs_clsid = slabs_clsid(ITEM_ntotal(it));
+      dbg("have deleted obj %s data-size %d from slabs %d\n",
+          key, vlen, it->slabs_clsid);
+      /////////////   update stats
+      STATS_LOCK();
+      stats.curr_bytes -= (it->nbytes + it->nkey);
+      stats.curr_items -= 1;
+      STATS_UNLOCK();
+      ///////////////////////////////
+    }
+    /////////// original line.
     /*
     it = item_get(key, nkey);
     */
@@ -3216,12 +3253,12 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
         c->thread->stats.slab_stats[it->slabs_clsid].delete_hits++;
         pthread_mutex_unlock(&c->thread->stats.mutex);
 
-        ////////////////////
+        /////////// orig line
         /*
         item_unlink(it);
         */
         ///////////////////
-        item_remove(it);      /* release our reference */
+        //item_remove(it);      /* release our reference */
         out_string(c, "DELETED");
     } else {
         pthread_mutex_lock(&c->thread->stats.mutex);
@@ -5197,6 +5234,12 @@ int main (int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
+    ///////////////////// rocksdb test
+    char* dbpath = "/tmp/rdb1";
+    rocksdb = InitRocksDB(dbpath);
+    dbg("init rocksdb %s ret %p\n", dbpath, (void*)rocksdb);
+    ////////////////////////////////////
+
     /* initialise clock event */
     clock_handler(0, 0, 0);
 
@@ -5275,6 +5318,14 @@ int main (int argc, char **argv) {
     if (event_base_loop(main_base, 0) != 0) {
         retval = EXIT_FAILURE;
     }
+
+    ////////////
+    if (rocksdb != NULL) {
+      CloseRocksDB(rocksdb);
+      rocksdb = NULL;
+    }
+    ////////////////////
+
 
     stop_assoc_maintenance_thread();
 
