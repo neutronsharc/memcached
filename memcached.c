@@ -49,6 +49,7 @@
 #include <stddef.h>
 
 #include "storage_rocksdb.h"
+#include "kvinterface.h"
 
 /* FreeBSD 4.x doesn't have IOV_MAX exposed. */
 #ifndef IOV_MAX
@@ -114,6 +115,7 @@ static struct event_base *main_base;
 
 /* RocksDB storage backend. */
 RocksDB *rocksdb = NULL;
+void* dbHandler = NULL;
 
 enum transmit_result {
     TRANSMIT_COMPLETE,   /** All done writing. */
@@ -4712,6 +4714,10 @@ static void remove_pidfile(const char *pid_file) {
 
 static void sig_handler(const int sig) {
     printf("SIGINT handled.\n");
+    if (dbHandler) {
+      CloseDB(dbHandler);
+      dbHandler = NULL;
+    }
     exit(EXIT_SUCCESS);
 }
 
@@ -5237,8 +5243,10 @@ int main (int argc, char **argv) {
     }
 
     ///////////////////// rocksdb test
-    char* dbpath = "/mnt/test/rdb1";
-    rocksdb = InitRocksDB(dbpath);
+    char* dbpath = "/ssd/test/memcached";
+    dbHandler= OpenDB(dbpath, 4);
+    assert(dbHandler!= NULL);
+    //rocksdb = InitRocksDB(dbpath);
     dbg("init rocksdb %s ret %p\n", dbpath, (void*)rocksdb);
     ////////////////////////////////////
 
