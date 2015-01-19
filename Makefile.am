@@ -20,7 +20,7 @@ memcached_SOURCES = memcached.c memcached.h \
                     stats.c stats.h \
                     util.c util.h \
                     trace.h cache.h sasl_defs.h \
-                    storage_rocksdb.c storage_rocksdb.h debug.h
+                    kvclient.c kvclient.h debug.h
 
 if BUILD_CACHE
 memcached_SOURCES += cache.c

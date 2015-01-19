@@ -1,8 +1,10 @@
 #ifndef __STORAGE_ROCKSDB__
 #define __STORAGE_ROCKSDB__
 
+#include "memcached.h"
 #include "rocksdb/c.h"
 
+// Below are routines to access RocksDB in C API
 typedef struct RocksDB RocksDB;
 
 struct  RocksDB {
@@ -24,5 +26,7 @@ extern int Put(RocksDB *db, char* key, int keylen, char *value, int vlen);
 extern char* Get(RocksDB *db, char *key, int keylen, size_t *vlen);
 extern int Delete(RocksDB *db, char *key, int keylen);
 
+// Below are routines to access KV store.
+int KVPut(void* dbHandler, item *it);
 
 #endif  // __STORAGE_ROCKSDB__

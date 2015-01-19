@@ -5,6 +5,9 @@
  * structures and function prototypes.
  */
 
+#ifndef __MEMCACHED_H__
+#define __MEMCACHED_H__
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -579,3 +582,5 @@ extern void drop_privileges(void);
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
+
+#endif  // __MEMCACHED_H__

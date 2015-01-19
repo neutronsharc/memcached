@@ -48,7 +48,7 @@
 #include <sysexits.h>
 #include <stddef.h>
 
-#include "storage_rocksdb.h"
+#include "kvclient.h"
 #include "kvinterface.h"
 
 /* FreeBSD 4.x doesn't have IOV_MAX exposed. */
@@ -5244,7 +5244,7 @@ int main (int argc, char **argv) {
 
     ///////////////////// rocksdb test
     char* dbpath = "/ssd/test/memcached";
-    dbHandler= OpenDB(dbpath, 4);
+    dbHandler= OpenDB(dbpath, 5);
     assert(dbHandler!= NULL);
     //rocksdb = InitRocksDB(dbpath);
     dbg("init rocksdb %s ret %p\n", dbpath, (void*)rocksdb);

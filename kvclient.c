@@ -5,7 +5,8 @@
 #include <unistd.h>
 
 #include "debug.h"
-#include "storage_rocksdb.h"
+#include "kvclient.h"
+#include "kvinterface.h"
 
 /* Open and prepare RocksDB */
 RocksDB* InitRocksDB(char *dbpath) {
@@ -132,3 +133,23 @@ int Delete(RocksDB *db, char *key, int keylen) {
   return (int)vlen;
 }
 
+/**
+ * Use KV interface to put an obj.
+ * Return:
+ *    0 on success, non-0 otherwise.
+ */
+int KVPut(void* dbHandler, item *it) {
+  KVRequest request;
+  request.type = PUT;
+  request.key = ITEM_key(it);
+  request.keylen = it->nkey;
+  request.value = ITEM_data(it);
+  request.vlen = it->nbytes;
+
+  int ret = KVRunCommand(dbHandler, &request, 1);
+  if (ret == 1) {
+    return 0;
+  } else {
+    return -1;
+  }
+}
