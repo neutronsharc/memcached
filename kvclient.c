@@ -153,3 +153,81 @@ int KVPut(void* dbHandler, item *it) {
     return -1;
   }
 }
+
+/**
+ * multi-get.
+ * Return:
+ *    Number of objects loaded successfully from kv store.
+ */
+item** KVGet(void* dbHandler,
+             KVRequest* requests,
+             int numRequests,
+             int *numItems) {
+  item* it;
+  item** its = malloc(numRequests * sizeof(item*));
+  int validItems = 0;
+  if (!its) {
+    err("failed to alloc item* list %d\n", numRequests);
+    *numItems = 0;
+    return NULL;
+  }
+
+  dbg("will fetch %d objs...\n", numRequests);
+  KVRunCommand(dbHandler, requests, numRequests);
+
+  for (int i = 0; i < numRequests; i++) {
+    KVRequest *p = requests + i;
+    if (p->retcode != SUCCESS) {
+      err("get key %s failed, retcode %d\n", p->key, p->retcode);
+      continue;
+    }
+    int flags = 0;
+    // TODO: parse exptime from data.
+    int exptime = 1000;
+    it = item_alloc(p->key, p->keylen, flags, exptime, (int)(p->vlen));
+    if (it) {
+      memcpy(ITEM_data(it), p->value, p->vlen);
+      dbg("fetched an item, nkey %d, vlen %ld, size = %ld\n", p->keylen, p->vlen, ITEM_ntotal(it));
+      //dump_item(it);
+      free(p->value);
+      its[validItems] = it;
+      validItems++;
+    } else {
+      err("failed to alloc memory for item %s, size %ld\n", p->key, p->vlen);
+      free(p->value);
+    }
+  }
+
+  *numItems = validItems;
+  return its;
+}
+
+/**
+ * Delete object.
+ * Return:
+ *    the object's size if it exists.  < 0 if the obj does not exist.
+ */
+int KVDelete(void* dbHandler, char* key, int keylen) {
+  KVRequest getrqst;
+  getrqst.type = GET;
+  getrqst.key = key;
+  getrqst.keylen = keylen;
+  int numItems = 0;
+  item** it = KVGet(dbHandler, &getrqst, 1, &numItems);
+  if (!it || numItems != 1) {
+    err("unable to find key %s\n", key);
+    return -1;
+  }
+
+  KVRequest request;
+  request.type = DELETE;
+  request.key = key;
+  request.keylen = keylen;
+
+  KVRunCommand(dbHandler, &request, 1);
+  dbg("delete key %s ret %d\n", key, request.retcode);
+  int vlen = (int)it[0]->nbytes;
+  item_remove(it[0]);
+  free(it);
+  return request.retcode == SUCCESS ? vlen : -1;
+}

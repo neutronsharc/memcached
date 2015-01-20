@@ -845,17 +845,18 @@ static void complete_nread_ascii(conn *c) {
     c->thread->stats.slab_stats[it->slabs_clsid].set_cmds++;
     pthread_mutex_unlock(&c->thread->stats.mutex);
 
-    //////////////////////////////
-    // TODO: save (it->key, it->data) to storage layer, then free this item to
-    // free-list.
-    Put(rocksdb, ITEM_key(it), it->nkey, ITEM_data(it), it->nbytes);
-    dbg("have finished storing item with comm %d\n", c->cmd);
-    //dump_item(it);
-    ////////////////////////
-
     if (strncmp(ITEM_data(it) + it->nbytes - 2, "\r\n", 2) != 0) {
         out_string(c, "CLIENT_ERROR bad data chunk");
     } else {
+      //////////////////////////////
+      // Save (it->key, it->data) to storage layer, then free the item
+      // to free-list.
+      //Put(rocksdb, ITEM_key(it), it->nkey, ITEM_data(it), it->nbytes);
+      KVPut(dbHandler, it);
+      dbg("have finished storing item with comm %d\n", c->cmd);
+      //dump_item(it);
+      ////////////////////////
+
       /////////////// deleted this line.
       // ret = store_item(it, comm, c);
       //////////////////////////////
@@ -2739,6 +2740,112 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     char *suffix;
     assert(c != NULL);
 
+    ///////////////  Properly handle multi-get.
+    // step 1: get all keys.
+    int numKeys = 0;
+    int maxRqsts = 200;
+    KVRequest* requests = malloc(maxRqsts * sizeof(KVRequest));
+    do {
+        while(key_token->length != 0) {
+            key = key_token->value;
+            nkey = key_token->length;
+            dbg("got key %s, len %ld\n", key, nkey);
+
+            if(nkey > KEY_MAX_LENGTH) {
+                out_string(c, "CLIENT_ERROR bad command line format");
+                free(requests);
+                return;
+            }
+
+            if (numKeys >= maxRqsts) {
+              KVRequest* newreqs =
+                realloc(requests, maxRqsts * 2 * sizeof(KVRequest));
+              if (newreqs) {
+                requests = newreqs;
+                maxRqsts *= 2;
+              } else {
+                err("fail to alloc more requests memory: %d\n", maxRqsts);
+                break;
+              }
+            }
+            requests[numKeys].type = GET;
+            requests[numKeys].key = key;
+            requests[numKeys].keylen = nkey;
+            requests[numKeys].value = NULL;
+            numKeys++;
+            key_token++;
+        }
+
+        // If the command string hasn't been fully processed,
+        // get the next set of tokens.
+        if(key_token->value != NULL) {
+            dbg("got extra string %s at end of key token...\n", key_token->value);
+            ntokens = tokenize_command(key_token->value, tokens, MAX_TOKENS);
+            key_token = tokens;
+        }
+    } while(key_token->value != NULL);
+
+    // Step 2: prepare a list of KVRequests, query the KV-store.
+    int validItems = 0;
+    dbg("will fetch %d objs...\n", numKeys);
+    item** its = KVGet(dbHandler, requests, numKeys, &validItems);
+    //int ret = KVRunCommand(dbHandler, requests, numKeys);
+    dbg("want get %d objs, ret %d objs\n", numKeys, validItems);
+    free(requests);
+
+    // Step 3: save the items to connection->ilist, and append to output.
+    for (i = 0; i < validItems; i++) {
+      it = its[i];
+      if (i >= c->isize) {
+        item **new_list = realloc(c->ilist, sizeof(item *) * c->isize * 2);
+        if (new_list) {
+          c->isize *= 2;
+          c->ilist = new_list;
+        } else {
+          item_remove(it);
+          break;
+        }
+      }
+      MEMCACHED_COMMAND_GET(c->sfd, ITEM_key(it), it->nkey,
+                              it->nbytes, ITEM_get_cas(it));
+      if (add_iov(c, "VALUE ", 6) != 0 ||
+          add_iov(c, ITEM_key(it), it->nkey) != 0 ||
+          add_iov(c, ITEM_suffix(it), it->nsuffix + it->nbytes) != 0) {
+        item_remove(it);
+        break;
+      }
+      if (settings.verbose > 1) {
+        fprintf(stderr, ">%d sending key %s\n", c->sfd, ITEM_key(it));
+      }
+      pthread_mutex_lock(&c->thread->stats.mutex);
+      c->thread->stats.slab_stats[it->slabs_clsid].get_hits++;
+      c->thread->stats.get_cmds++;
+      pthread_mutex_unlock(&c->thread->stats.mutex);
+      *(c->ilist + i) = it;
+    }
+
+    // Update missed counts.
+    if (numKeys > validItems) {
+      int missed = numKeys - validItems;
+      pthread_mutex_lock(&c->thread->stats.mutex);
+      c->thread->stats.get_misses += missed;
+      c->thread->stats.get_cmds += missed;
+      pthread_mutex_unlock(&c->thread->stats.mutex);
+    }
+
+    c->icurr = c->ilist;
+    c->ileft = i;
+    if (key_token->value != NULL || add_iov(c, "END\r\n", 5) != 0
+        || (IS_UDP(c->transport) && build_udp_headers(c) != 0)) {
+        out_string(c, "SERVER_ERROR out of memory writing get response");
+    }
+    else {
+        conn_set_state(c, conn_mwrite);
+        c->msgcurr = 0;
+    }
+    return;
+    ///////////////////////////
+
     do {
         while(key_token->length != 0) {
 
@@ -3226,9 +3333,10 @@ static void process_delete_command(conn *c, token_t *tokens, const size_t ntoken
     ////////////////////////////////
     // TODO:  pass the key to storage layer.
     dbg("will delete key %s, nkey %ld\n", key, nkey);
-    int vlen = Delete(rocksdb, key, nkey);
+    //int vlen = Delete(rocksdb, key, nkey);
+    int vlen = KVDelete(dbHandler, key, nkey);
     if (vlen < 0) {
-      dbg("the obj %s not exist\n", key);
+      dbg("failed to delete obj %s\n", key);
       it = NULL;
     } else {
       it = &dummyItem;
@@ -5247,7 +5355,7 @@ int main (int argc, char **argv) {
     dbHandler= OpenDB(dbpath, 5);
     assert(dbHandler!= NULL);
     //rocksdb = InitRocksDB(dbpath);
-    dbg("init rocksdb %s ret %p\n", dbpath, (void*)rocksdb);
+    dbg("init rocksdb %s ret %p\n", dbpath, (void*)dbHandler);
     ////////////////////////////////////
 
     /* initialise clock event */

@@ -3,6 +3,7 @@
 
 #include "memcached.h"
 #include "rocksdb/c.h"
+#include "kvinterface.h"
 
 // Below are routines to access RocksDB in C API
 typedef struct RocksDB RocksDB;
@@ -28,5 +29,12 @@ extern int Delete(RocksDB *db, char *key, int keylen);
 
 // Below are routines to access KV store.
 int KVPut(void* dbHandler, item *it);
+
+item** KVGet(void* dbHandler,
+             KVRequest* requests,
+             int numRequests,
+             int *numItems);
+
+int KVDelete(void* dbHandler, char* key, int keylen);
 
 #endif  // __STORAGE_ROCKSDB__
