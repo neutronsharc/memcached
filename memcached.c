@@ -233,6 +233,10 @@ static void settings_init(void) {
     settings.hashpower_init = 0;
     settings.slab_reassign = false;
     settings.slab_automove = false;
+
+    settings.num_iothreads = 32;
+    settings.block_cache_MB = 2000;
+    settings.db_path = NULL;
 }
 
 /*
@@ -4986,6 +4990,9 @@ int main (int argc, char **argv) {
           "I:"  /* Max item size */
           "S"   /* Sasl ON */
           "o:"  /* Extended generic options */
+          "A:"  /* DB block cache size in MB  */
+          "E:"  /* DB storage path */
+          "T:"  /* number of IO threads to DB */
         ))) {
         switch (c) {
         case 'a':
@@ -5122,6 +5129,15 @@ int main (int argc, char **argv) {
                         " -- should be one of auto, binary, or ascii\n", optarg);
                 exit(EX_USAGE);
             }
+            break;
+        case 'A':
+            settings.block_cache_MB = atoi(optarg);
+            break;
+        case 'E':
+            settings.db_path = optarg;
+            break;
+        case 'T':
+            settings.num_iothreads = atoi(optarg);
             break;
         case 'I':
             unit = optarg[strlen(optarg)-1];
@@ -5351,11 +5367,16 @@ int main (int argc, char **argv) {
     }
 
     ///////////////////// rocksdb test
-    char* dbpath = "/ssd/test/memcached";
-    dbHandler= OpenDB(dbpath, 5);
+    if (!settings.db_path) {
+      printf("Must specify DB path!\n");
+      exit(EXIT_FAILURE);
+    }
+    dbHandler= OpenDB(settings.db_path,
+                      settings.num_iothreads,
+                      settings.block_cache_MB);
     assert(dbHandler!= NULL);
-    //rocksdb = InitRocksDB(dbpath);
-    dbg("init rocksdb %s ret %p\n", dbpath, (void*)dbHandler);
+    printf("init rocksdb %s, iothread %d, block_cache %d MB\n",
+           settings.db_path, settings.num_iothreads, settings.block_cache_MB);
     ////////////////////////////////////
 
     /* initialise clock event */
