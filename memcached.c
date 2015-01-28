@@ -233,8 +233,8 @@ static void settings_init(void) {
     settings.slab_reassign = false;
     settings.slab_automove = false;
 
-    settings.num_iothreads = 32;
-    settings.block_cache_MB = 2000;
+    settings.num_iothreads = 4;
+    settings.block_cache_MB = 3000;
     settings.db_path = NULL;
 }
 
