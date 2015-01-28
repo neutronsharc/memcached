@@ -2778,7 +2778,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
                 c->kvRequests = newreqs;
                 c->requestListSize *= 2;;
                 c->kvResults = newresults;
-                c->resultListSize *= 30;
+                c->resultListSize *= 2;
               } else {
                 err("fail to alloc more kv-requests memory: %d\n",
                     c->requestListSize);
