@@ -27,6 +27,8 @@
 
 #include "sasl_defs.h"
 
+#include "kvinterface.h"
+
 /** Maximum length of a key. */
 #define KEY_MAX_LENGTH 250
 
@@ -425,6 +427,11 @@ struct conn {
     int    isize;
     item   **icurr;
     int    ileft;
+
+    KVRequest *kvRequests;
+    int requestListSize;
+    item   **kvResults;
+    int    resultListSize;
 
     char   **suffixlist;
     int    suffixsize;

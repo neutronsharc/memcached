@@ -28,12 +28,16 @@ extern char* Get(RocksDB *db, char *key, int keylen, size_t *vlen);
 extern int Delete(RocksDB *db, char *key, int keylen);
 
 // Below are routines to access KV store.
+void* OpenKVStore(char* dbpath, int numIOThreqds, int cacheMB);
+
+void CloseKVStore(void* handler);
+
 int KVPut(void* dbHandler, item *it);
 
-item** KVGet(void* dbHandler,
-             KVRequest* requests,
-             int numRequests,
-             int *numItems);
+int KVGet(void* dbHandler,
+          KVRequest* requests,
+          int numRequests,
+          item** resultItems);
 
 int KVDelete(void* dbHandler, char* key, int keylen);
 

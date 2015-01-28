@@ -49,7 +49,6 @@
 #include <stddef.h>
 
 #include "kvclient.h"
-#include "kvinterface.h"
 
 /* FreeBSD 4.x doesn't have IOV_MAX exposed. */
 #ifndef IOV_MAX
@@ -387,6 +386,8 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         c->iovsize = IOV_LIST_INITIAL;
         c->msgsize = MSG_LIST_INITIAL;
         c->hdrsize = 0;
+        c->requestListSize = ITEM_LIST_INITIAL;
+        c->resultListSize = ITEM_LIST_INITIAL;
 
         c->rbuf = (char *)malloc((size_t)c->rsize);
         c->wbuf = (char *)malloc((size_t)c->wsize);
@@ -394,6 +395,10 @@ conn *conn_new(const int sfd, enum conn_states init_state,
         c->suffixlist = (char **)malloc(sizeof(char *) * c->suffixsize);
         c->iov = (struct iovec *)malloc(sizeof(struct iovec) * c->iovsize);
         c->msglist = (struct msghdr *)malloc(sizeof(struct msghdr) * c->msgsize);
+        c->kvRequests =
+          (KVRequest*)malloc(c->requestListSize * sizeof(KVRequest));
+        c->kvResults =
+          (item**)malloc(c->resultListSize * sizeof(item*));
 
         if (c->rbuf == 0 || c->wbuf == 0 || c->ilist == 0 || c->iov == 0 ||
                 c->msglist == 0 || c->suffixlist == 0) {
@@ -539,6 +544,12 @@ void conn_free(conn *c) {
             free(c->suffixlist);
         if (c->iov)
             free(c->iov);
+        if (c->kvRequests) {
+          free(c->kvRequests);
+        }
+        if (c->kvResults) {
+          free(c->kvResults);
+        }
         free(c);
     }
 }
@@ -2747,8 +2758,6 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     ///////////////  Properly handle multi-get.
     // step 1: get all keys.
     int numKeys = 0;
-    int maxRqsts = 200;
-    KVRequest* requests = malloc(maxRqsts * sizeof(KVRequest));
     do {
         while(key_token->length != 0) {
             key = key_token->value;
@@ -2757,25 +2766,29 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
 
             if(nkey > KEY_MAX_LENGTH) {
                 out_string(c, "CLIENT_ERROR bad command line format");
-                free(requests);
                 return;
             }
 
-            if (numKeys >= maxRqsts) {
+            if (numKeys >= c->requestListSize) {
               KVRequest* newreqs =
-                realloc(requests, maxRqsts * 2 * sizeof(KVRequest));
-              if (newreqs) {
-                requests = newreqs;
-                maxRqsts *= 2;
+                realloc(c->kvRequests, (c->requestListSize * 2) * sizeof(KVRequest));
+              item** newresults =
+                realloc(c->kvResults, (c->resultListSize * 2) * sizeof(item*));
+              if (newreqs && newresults) {
+                c->kvRequests = newreqs;
+                c->requestListSize *= 2;;
+                c->kvResults = newresults;
+                c->resultListSize *= 30;
               } else {
-                err("fail to alloc more requests memory: %d\n", maxRqsts);
+                err("fail to alloc more kv-requests memory: %d\n",
+                    c->requestListSize);
                 break;
               }
             }
-            requests[numKeys].type = GET;
-            requests[numKeys].key = key;
-            requests[numKeys].keylen = nkey;
-            requests[numKeys].value = NULL;
+            c->kvRequests[numKeys].type = GET;
+            c->kvRequests[numKeys].key = key;
+            c->kvRequests[numKeys].keylen = nkey;
+            c->kvRequests[numKeys].value = NULL;
             numKeys++;
             key_token++;
         }
@@ -2790,16 +2803,13 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     } while(key_token->value != NULL);
 
     // Step 2: prepare a list of KVRequests, query the KV-store.
-    int validItems = 0;
     dbg("will fetch %d objs...\n", numKeys);
-    item** its = KVGet(dbHandler, requests, numKeys, &validItems);
-    //int ret = KVRunCommand(dbHandler, requests, numKeys);
+    int validItems = KVGet(dbHandler, c->kvRequests, numKeys, c->kvResults);
     dbg("want get %d objs, ret %d objs\n", numKeys, validItems);
-    free(requests);
 
     // Step 3: save the items to connection->ilist, and append to output.
     for (i = 0; i < validItems; i++) {
-      it = its[i];
+      it = c->kvResults[i];
       if (i >= c->isize) {
         item **new_list = realloc(c->ilist, sizeof(item *) * c->isize * 2);
         if (new_list) {
@@ -4827,7 +4837,7 @@ static void remove_pidfile(const char *pid_file) {
 static void sig_handler(const int sig) {
     printf("SIGINT handled.\n");
     if (dbHandler) {
-      CloseDB(dbHandler);
+      CloseKVStore(dbHandler);
       dbHandler = NULL;
     }
     exit(EXIT_SUCCESS);
@@ -5371,11 +5381,11 @@ int main (int argc, char **argv) {
       printf("Must specify DB path!\n");
       exit(EXIT_FAILURE);
     }
-    dbHandler= OpenDB(settings.db_path,
-                      settings.num_iothreads,
-                      settings.block_cache_MB);
+    dbHandler= OpenKVStore(settings.db_path,
+                           settings.num_iothreads,
+                           settings.block_cache_MB);
     assert(dbHandler!= NULL);
-    printf("init rocksdb %s, iothread %d, block_cache %d MB\n",
+    printf("init KVStore %s, iothread %d, block_cache %d MB\n",
            settings.db_path, settings.num_iothreads, settings.block_cache_MB);
     ////////////////////////////////////
 
@@ -5457,13 +5467,6 @@ int main (int argc, char **argv) {
     if (event_base_loop(main_base, 0) != 0) {
         retval = EXIT_FAILURE;
     }
-
-    ////////////
-    if (rocksdb != NULL) {
-      CloseRocksDB(rocksdb);
-      rocksdb = NULL;
-    }
-    ////////////////////
 
     stop_assoc_maintenance_thread();
 

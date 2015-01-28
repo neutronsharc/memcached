@@ -133,6 +133,15 @@ int Delete(RocksDB *db, char *key, int keylen) {
   return (int)vlen;
 }
 
+
+void* OpenKVStore(char* dbpath, int numIOThreads, int cacheMB) {
+  return OpenDB(dbpath, numIOThreads, cacheMB);
+}
+
+void CloseKVStore(void* handler) {
+  CloseDB(handler);
+}
+
 /**
  * Use KV interface to put an obj.
  * Return:
@@ -156,21 +165,20 @@ int KVPut(void* dbHandler, item *it) {
 
 /**
  * multi-get.
+ * Input:
+ *    requests:  a list of KV request
+ *    resultItems: an array of item*. Should be at least the same size as
+ *                 requests list. Items that are successfully retrieved
+ *                 at stored in this array.
  * Return:
- *    Number of objects loaded successfully from kv store.
+ *    Number of items successfully retrieved from kv store.
  */
-item** KVGet(void* dbHandler,
-             KVRequest* requests,
-             int numRequests,
-             int *numItems) {
+int KVGet(void* dbHandler,
+          KVRequest* requests,
+          int numRequests,
+          item** resultItems) {
   item* it;
-  item** its = malloc(numRequests * sizeof(item*));
   int validItems = 0;
-  if (!its) {
-    err("failed to alloc item* list %d\n", numRequests);
-    *numItems = 0;
-    return NULL;
-  }
 
   dbg("will fetch %d objs...\n", numRequests);
   KVRunCommand(dbHandler, requests, numRequests);
@@ -190,7 +198,7 @@ item** KVGet(void* dbHandler,
       dbg("fetched an item, nkey %d, vlen %ld, size = %ld\n", p->keylen, p->vlen, ITEM_ntotal(it));
       //dump_item(it);
       free(p->value);
-      its[validItems] = it;
+      resultItems[validItems] = it;
       validItems++;
     } else {
       err("failed to alloc memory for item %s, size %ld\n", p->key, p->vlen);
@@ -198,8 +206,7 @@ item** KVGet(void* dbHandler,
     }
   }
 
-  *numItems = validItems;
-  return its;
+  return validItems;
 }
 
 /**
@@ -212,9 +219,9 @@ int KVDelete(void* dbHandler, char* key, int keylen) {
   getrqst.type = GET;
   getrqst.key = key;
   getrqst.keylen = keylen;
-  int numItems = 0;
-  item** it = KVGet(dbHandler, &getrqst, 1, &numItems);
-  if (!it || numItems != 1) {
+  item *its[1];
+  int numItems = KVGet(dbHandler, &getrqst, 1, its);
+  if (numItems != 1) {
     err("unable to find key %s\n", key);
     return -1;
   }
@@ -226,8 +233,7 @@ int KVDelete(void* dbHandler, char* key, int keylen) {
 
   KVRunCommand(dbHandler, &request, 1);
   dbg("delete key %s ret %d\n", key, request.retcode);
-  int vlen = (int)it[0]->nbytes;
-  item_remove(it[0]);
-  free(it);
+  int vlen = (int)its[0]->nbytes;
+  item_remove(its[0]);
   return request.retcode == SUCCESS ? vlen : -1;
 }
