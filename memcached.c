@@ -4723,6 +4723,9 @@ static void usage(void) {
            "                table should be. Can be grown at runtime if not big enough.\n"
            "                Set this based on \"STAT hash_power_level\" before a \n"
            "                restart.\n"
+           "-A <db cache> block cache for backend DB in MB. Def to 3000.\n"
+           "-E <db path>  backend DB path\n"
+           "-T <db threads>  number of IO threads for backend DB. Def to 4.\n"
            );
     return;
 }
