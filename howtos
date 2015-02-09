@@ -1,0 +1,21 @@
+
+================================
+how to run with rocksdb
+
+1. download and compile rocksdb as a static lib (librocksdb.a)
+  $ make static_lib
+
+2. clone the rocks-based kvlib, make a static lib (kvlib.a)
+https://github.com/hdatas/rocksdb-study.git
+
+3. edit Makefile.am to point to the right path of rocksdb and kvlib.
+
+
+
+
+
+======================================
+how to use another KV engine
+
+Implement KV client interface. Use the "kvclient.h" as an example.
+
