@@ -233,8 +233,8 @@ static void settings_init(void) {
     settings.slab_reassign = false;
     settings.slab_automove = false;
 
-    settings.num_iothreads = 4;
-    settings.block_cache_MB = 3000;
+    settings.num_shards = 30;
+    settings.block_cache_MB = 5000;
     settings.db_path = NULL;
 }
 
@@ -4723,9 +4723,9 @@ static void usage(void) {
            "                table should be. Can be grown at runtime if not big enough.\n"
            "                Set this based on \"STAT hash_power_level\" before a \n"
            "                restart.\n"
-           "-A <db cache> block cache for backend DB in MB. Def to 3000.\n"
-           "-E <db path>  backend DB path\n"
-           "-T <db threads>  number of IO threads for backend DB. Def to 4.\n"
+           "-A <db cache>   block cache for backend DB in MB. Def to 5000.\n"
+           "-E <db path>    backend DB path\n"
+           "-T <db shards>  number of DB shards. Def to 30.\n"
            );
     return;
 }
@@ -5005,7 +5005,7 @@ int main (int argc, char **argv) {
           "o:"  /* Extended generic options */
           "A:"  /* DB block cache size in MB  */
           "E:"  /* DB storage path */
-          "T:"  /* number of IO threads to DB */
+          "T:"  /* number of DB shards */
         ))) {
         switch (c) {
         case 'a':
@@ -5150,7 +5150,7 @@ int main (int argc, char **argv) {
             settings.db_path = optarg;
             break;
         case 'T':
-            settings.num_iothreads = atoi(optarg);
+            settings.num_shards = atoi(optarg);
             break;
         case 'I':
             unit = optarg[strlen(optarg)-1];
@@ -5385,11 +5385,11 @@ int main (int argc, char **argv) {
       exit(EXIT_FAILURE);
     }
     dbHandler= OpenKVStore(settings.db_path,
-                           settings.num_iothreads,
+                           settings.num_shards,
                            settings.block_cache_MB);
     assert(dbHandler!= NULL);
-    printf("init KVStore %s, iothread %d, block_cache %d MB\n",
-           settings.db_path, settings.num_iothreads, settings.block_cache_MB);
+    printf("init KVStore %s, shards = %d, block_cache %d MB\n",
+           settings.db_path, settings.num_shards, settings.block_cache_MB);
     ////////////////////////////////////
 
     /* initialise clock event */

@@ -310,9 +310,9 @@ struct settings {
     bool slab_automove;     /* Whether or not to automatically move slabs */
     int hashpower_init;     /* Starting hash power level */
 
-    int num_iothreads;      /* number of io threads to DB */
+    int num_shards;         /* number of shards in the backend KV-DB */
     int block_cache_MB;     /* DB's block cache size in MB */
-    char *db_path;            /* DB path */
+    char *db_path;          /* DB path */
 };
 
 extern struct stats stats;

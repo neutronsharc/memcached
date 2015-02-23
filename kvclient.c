@@ -186,7 +186,7 @@ int KVGet(void* dbHandler,
   for (int i = 0; i < numRequests; i++) {
     KVRequest *p = requests + i;
     if (p->retcode != SUCCESS) {
-      err("get key %s failed, retcode %d\n", p->key, p->retcode);
+      dbg("get key %s failed, retcode %d\n", p->key, p->retcode);
       continue;
     }
     int flags = 0;
@@ -222,7 +222,7 @@ int KVDelete(void* dbHandler, char* key, int keylen) {
   item *its[1];
   int numItems = KVGet(dbHandler, &getrqst, 1, its);
   if (numItems != 1) {
-    err("unable to find key %s\n", key);
+    dbg("unable to find key %s\n", key);
     return -1;
   }
 
