@@ -134,8 +134,10 @@ int Delete(RocksDB *db, char *key, int keylen) {
 }
 
 
-void* OpenKVStore(char* dbpath, int numIOThreads, int cacheMB) {
-  return OpenDB(dbpath, numIOThreads, cacheMB);
+// dbpath contains multiple dir-names, separated by ",". DB will open multiple
+// shards across these dirs.
+void* OpenKVStore(char* dbpath, int numShards, int cacheMB) {
+  return OpenDB(dbpath, numShards, cacheMB);
 }
 
 void CloseKVStore(void* handler) {
