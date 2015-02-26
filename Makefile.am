@@ -9,7 +9,7 @@ testapp_SOURCES = testapp.c util.c util.h
 timedrun_SOURCES = timedrun.c
 
 CFLAGS += -I/home/shawn/code/rocksdb/include -I/home/shawn/code/rocksdb-study
-LIBS += /home/shawn/code/rocksdb/librocksdb.a /home/shawn/code/rocksdb-study/kvlib.a -lbz2 -lpthread -lsnappy -lz
+LIBS += /home/shawn/code/rocksdb-study/kvlib.a /home/shawn/code/rocksdb/librocksdb.a -lbz2 -lpthread -lsnappy -lz
 
 memcached_SOURCES = memcached.c memcached.h \
                     hash.c hash.h \

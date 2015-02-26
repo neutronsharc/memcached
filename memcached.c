@@ -113,8 +113,11 @@ static conn *listen_conn = NULL;
 static struct event_base *main_base;
 
 /* RocksDB storage backend. */
-RocksDB *rocksdb = NULL;
+//RocksDB *rocksdb = NULL;
 void* dbHandler = NULL;
+
+// If write is enabled.
+static int writeEnabled = 1;
 
 enum transmit_result {
     TRANSMIT_COMPLETE,   /** All done writing. */
@@ -2789,6 +2792,7 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
             c->kvRequests[numKeys].key = key;
             c->kvRequests[numKeys].keylen = nkey;
             c->kvRequests[numKeys].value = NULL;
+            c->kvRequests[numKeys].reserved = NULL;
             numKeys++;
             key_token++;
         }
@@ -2872,10 +2876,11 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
             }
 
             //////////////////////////
-            //  TODO: read from backend the item,
+            //  TODO: Obsolete code. Need cleanup.
+            //  read from backend the item,
             //  then allocate an item big enough, init some fields, read (key) from storage layer
             size_t vlen = 0;
-            char *value = Get(rocksdb, key, nkey, &vlen);
+            char *value = NULL;  //Get(rocksdb, key, nkey, &vlen);
             if (!value) {
               dbg("object %s not exist in storage...\n", key);
               it = NULL;
@@ -3050,6 +3055,11 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     assert(c != NULL);
 
     set_noreply_maybe(c, tokens, ntokens);
+
+    if (!writeEnabled) {
+      out_string(c, "ERROR: WRITE DISABLED");
+      return;
+    }
 
     if (tokens[KEY_TOKEN].length > KEY_MAX_LENGTH) {
         out_string(c, "CLIENT_ERROR bad command line format");
@@ -3592,6 +3602,27 @@ static void process_command(conn *c, char *command) {
         }
     } else if ((ntokens == 3 || ntokens == 4) && (strcmp(tokens[COMMAND_TOKEN].value, "verbosity") == 0)) {
         process_verbosity_command(c, tokens, ntokens);
+    } else if (ntokens == 3 &&
+               (strcmp(tokens[COMMAND_TOKEN].value, "write") == 0)) {
+      if (strcmp(tokens[SUBCOMMAND_TOKEN].value, "on") == 0) {
+        writeEnabled = 1;
+        out_string(c, "WRITE ON");
+      } else {
+        writeEnabled = 0;
+        out_string(c, "WRITE OFF");
+      }
+    } else if (ntokens == 2 &&
+               (strcmp(tokens[COMMAND_TOKEN].value, "number_records") == 0)) {
+      size_t records = GetNumberOfRecords(dbHandler);
+      char outs[64];
+      sprintf(outs, "%ld", records);
+      out_string(c, outs);
+    } else if (ntokens == 2 &&
+               (strcmp(tokens[COMMAND_TOKEN].value, "data_size") == 0)) {
+      size_t size = GetDataSize(dbHandler);
+      char outs[64];
+      sprintf(outs, "%ld", size);
+      out_string(c, outs);
     } else {
         out_string(c, "ERROR");
     }
