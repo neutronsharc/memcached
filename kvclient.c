@@ -69,7 +69,7 @@ int KVGet(void* dbHandler,
     int flags = 0;
     // TODO: parse exptime from data.
     int exptime = 1000;
-    it = item_alloc(p->key, p->keylen, flags, exptime, (int)(p->vlen));
+    it = item_alloc((char*)p->key, p->keylen, flags, exptime, (int)(p->vlen));
     if (it) {
       memcpy(ITEM_data(it), p->value, p->vlen);
       dbg("fetched an item, nkey %d, vlen %ld, size = %ld\n", p->keylen, p->vlen, ITEM_ntotal(it));
