@@ -22,4 +22,6 @@ size_t GetNumberOfRecords(void* dbHandler);
 
 size_t GetDataSize(void* dbHandler);
 
+size_t GetMemoryUsage(void* dbHandler);
+
 #endif  // __KVCLIENT_H__

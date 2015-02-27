@@ -134,3 +134,12 @@ size_t GetNumberOfRecords(void* dbHandler) {
   KVRunCommand(dbHandler, &rqst, 1);
   return rqst.vlen;
 }
+
+size_t GetMemoryUsage(void* dbHandler) {
+  KVRequest rqst;
+  memset(&rqst, 0, sizeof(rqst));
+  rqst.type = GET_MEMORY_USAGE;
+
+  KVRunCommand(dbHandler, &rqst, 1);
+  return rqst.vlen;
+}

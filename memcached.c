@@ -3623,6 +3623,12 @@ static void process_command(conn *c, char *command) {
       char outs[64];
       sprintf(outs, "%ld", size);
       out_string(c, outs);
+    } else if (ntokens == 2 &&
+               (strcmp(tokens[COMMAND_TOKEN].value, "memory_usage") == 0)) {
+      size_t size = GetMemoryUsage(dbHandler);
+      char outs[64];
+      sprintf(outs, "%ld", size);
+      out_string(c, outs);
     } else {
         out_string(c, "ERROR");
     }
