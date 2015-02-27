@@ -119,8 +119,8 @@ item *do_item_alloc(char *key, const size_t nkey, const int flags, const rel_tim
     it->exptime = exptime;
     memcpy(ITEM_suffix(it), suffix, (size_t)nsuffix);
     it->nsuffix = nsuffix;
-    dbg("got an item total size %ld, item's data offset = %ld\n",
-        ntotal, (char*)&(it->data[0]) - (char*)it);
+    dbg("got an item total size %ld, refcnt=%d, item's data offset = %ld\n",
+        ntotal, it->refcount, (char*)&(it->data[0]) - (char*)it);
     return it;
 
     //////////////////////////////////
