@@ -60,6 +60,19 @@ int KVGet(void* dbHandler,
   dbg("will fetch %d objs...\n", numRequests);
   KVRunCommand(dbHandler, requests, numRequests);
 
+  ////////////////
+#if 0
+  for (int i = 0; i < numRequests; i++) {
+    KVRequest *p = requests + i;
+    if (p->retcode != SUCCESS) {
+      dbg("get key %s failed, retcode %d\n", p->key, p->retcode);
+      continue;
+    }
+    ReleaseMemory(p->value);
+  }
+  return 0;
+#endif
+
   for (int i = 0; i < numRequests; i++) {
     KVRequest *p = requests + i;
     if (p->retcode != SUCCESS) {
@@ -74,14 +87,26 @@ int KVGet(void* dbHandler,
       memcpy(ITEM_data(it), p->value, p->vlen);
       dbg("fetched an item, nkey %d, vlen %ld, size = %ld\n", p->keylen, p->vlen, ITEM_ntotal(it));
       //dump_item(it);
-      free(p->value);
+      //free(p->value);
+      ReleaseMemory(p->value);
       resultItems[validItems] = it;
       validItems++;
     } else {
       err("failed to alloc memory for item %s, size %ld\n", p->key, p->vlen);
-      free(p->value);
+      //free(p->value);
+      ReleaseMemory(p->value);
     }
   }
+
+  //////////
+#if 0
+  for (int i = 0; i < validItems; i++) {
+    it = resultItems[i];
+    item_remove(it);
+  }
+  validItems = 0;
+#endif
+  //////////////////////
 
   return validItems;
 }

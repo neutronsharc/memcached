@@ -114,7 +114,9 @@ static struct event_base *main_base;
 
 /* RocksDB storage backend. */
 //RocksDB *rocksdb = NULL;
-void* dbHandler = NULL;
+static void* dbHandler = NULL;
+static char tmpSuffix[128];
+static char tmpValue[4000];
 
 // If write is enabled.
 static int writeEnabled = 1;
@@ -2809,7 +2811,22 @@ static inline void process_get_command(conn *c, token_t *tokens, size_t ntokens,
     // Step 2: prepare a list of KVRequests, query the KV-store.
     dbg("will fetch %d objs...\n", numKeys);
     int validItems = KVGet(dbHandler, c->kvRequests, numKeys, c->kvResults);
+    //int validItems = 0;
     dbg("want get %d objs, ret %d objs\n", numKeys, validItems);
+    ////////////////////////////////////////
+#if 0
+    if (validItems == 0) {
+      for (i = 0; i < numKeys; i++) {
+        if (add_iov(c, "VALUE ", 6) != 0 ||
+            add_iov(c, tmpSuffix, strlen(tmpSuffix)) != 0 ||
+            add_iov(c, tmpValue, 1022) != 0) {
+          printf("failed to write dummy data for key %d: %s\n",
+                 i, c->kvRequests[i].key);
+        }
+      }
+    }
+#endif
+    /////////////////////////////////////////////
 
     // Step 3: save the items to connection->ilist, and append to output.
     for (i = 0; i < validItems; i++) {
@@ -5427,6 +5444,10 @@ int main (int argc, char **argv) {
     assert(dbHandler!= NULL);
     printf("init KVStore %s, shards = %d, block_cache %d MB\n",
            settings.db_path, settings.num_shards, settings.block_cache_MB);
+    sprintf(tmpSuffix, "dummykey 0 1020\r\n");
+    memset(tmpValue, 'A', 4000);
+    tmpValue[1020] = '\r';
+    tmpValue[1021] = '\n';
     ////////////////////////////////////
 
     /* initialise clock event */
