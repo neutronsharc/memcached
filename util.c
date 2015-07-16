@@ -115,6 +115,68 @@ void vperror(const char *fmt, ...) {
     perror(buf);
 }
 
+// Split an input string into sub-strings according to "delimiters".
+// The sub-strings are put in substrs[] array.
+//
+// Return:  number of sub-strings found in input. -1 if more sub-strings
+//    than the substrs[] array size.
+int SplitString(char *input,
+                const char *delimiters,
+                char* substrs[],
+                int substrs_size) {
+  int num_substrs = 0;
+  char *pch;
+
+  pch = strtok(input, delimiters);
+  while (pch) {
+    substrs[num_substrs] = pch;
+    num_substrs++;
+    if (num_substrs >= substrs_size) {
+      printf("sub str number %d > substrs size %d\n", num_substrs, substrs_size);
+      return -1;
+    }
+    pch = strtok(NULL, delimiters);
+  }
+  for (int i = 0; i < num_substrs; i++) {
+    printf("\t%s\n", substrs[i]);
+  }
+  return num_substrs;
+}
+
+// Convert a string in form of 123K/M/G to its decimal value.
+size_t KMGToValue(char *strValue) {
+  char *rptr = NULL;
+  size_t val = strtoul(strValue, &rptr, 10);
+  if (*rptr == 0) {
+    // the input string is like "1345".
+  } else if (*(rptr + 1) == 0) {
+    // the input string is like "1345K".
+    switch (*rptr) {
+      case 'k':
+      case 'K':
+        val *= 1024L;
+        break;
+      case 'm':
+      case 'M':
+        val *= (1024L * 1024);
+        break;
+      case 'g':
+      case 'G':
+        val *= (1024L * 1024 * 1024);
+        break;
+      default:
+        fprintf(stderr, "invalid input format: %s\n", strValue);
+        return 0;
+    }
+  } else {
+    fprintf(stderr, "invalid input format: %s\n", strValue);
+    return 0;
+  }
+
+  return val;
+}
+
+
 #ifndef HAVE_HTONLL
 static uint64_t mc_swap64(uint64_t in) {
 #ifdef ENDIAN_LITTLE

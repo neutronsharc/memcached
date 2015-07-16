@@ -240,7 +240,10 @@ static void settings_init(void) {
 
     settings.num_shards = 30;
     settings.block_cache_MB = 5000;
+    settings.memory_size_index = 0;
+    settings.memory_size_datacache = 0;
     settings.db_path = NULL;
+    settings.db_storage_size_str = NULL;
 }
 
 /*
@@ -872,7 +875,7 @@ static void complete_nread_ascii(conn *c) {
       // Save (it->key, it->data) to storage layer, then free the item
       // to free-list.
       //Put(rocksdb, ITEM_key(it), it->nkey, ITEM_data(it), it->nbytes);
-      KVPut(dbHandler, it);
+      int kvret = KVPut(dbHandler, it);
       dbg("have finished storing item with comm %d\n", c->cmd);
       //dump_item(it);
       ////////////////////////
@@ -887,7 +890,7 @@ static void complete_nread_ascii(conn *c) {
       stats.total_items += 1;
       STATS_UNLOCK();
       /////////////////////////////////////////
-      ret = STORED;
+      ret = (kvret == HCD_OK) ? STORED : NOT_STORED;
 
 #ifdef ENABLE_DTRACE
       uint64_t cas = ITEM_get_cas(it);
@@ -3123,6 +3126,7 @@ static void process_update_command(conn *c, token_t *tokens, const size_t ntoken
     ///////////////////////////////
     // Have extended item_alloc() to grab an new item big enough to hold data,
     it = item_alloc(key, nkey, flags, realtime(exptime), vlen);
+    dbg("item %s(%d) has exptime %d\n", key, (int)nkey, it->exptime);
 
     if (it == 0) {
         if (! item_size_ok(nkey, flags, vlen))
@@ -4777,9 +4781,10 @@ static void usage(void) {
            "                table should be. Can be grown at runtime if not big enough.\n"
            "                Set this based on \"STAT hash_power_level\" before a \n"
            "                restart.\n"
-           "-A <db cache>   block cache for backend DB in MB. Def to 5000.\n"
-           "-E <db path>    backend DB path\n"
-           "-T <db shards>  number of DB shards. Def to 30.\n"
+           "-A <size>     memory size reserved for index, in form of 100K/M/G.\n"
+           "-E <size>     memory size reserved for data cache, in form of 100K/M/G\n"
+           "-F <path1,path2,...>  comma separated dir paths used as storage\n"
+           "-T <size1,size2,...>  storage size allowed to use in each dir, in form of 123K/M/G.\n"
            );
     return;
 }
@@ -5057,9 +5062,10 @@ int main (int argc, char **argv) {
           "I:"  /* Max item size */
           "S"   /* Sasl ON */
           "o:"  /* Extended generic options */
-          "A:"  /* DB block cache size in MB  */
-          "E:"  /* DB storage path */
-          "T:"  /* number of DB shards */
+          "A:"  /* memory size allocated to index. */
+          "E:"  /* memory size allocated to data cache. */
+          "F:"  /* DB storage path */
+          "T:"  /* storage size allowed to use in each path. */
         ))) {
         switch (c) {
         case 'a':
@@ -5198,13 +5204,20 @@ int main (int argc, char **argv) {
             }
             break;
         case 'A':
-            settings.block_cache_MB = atoi(optarg);
+            settings.memory_size_index = KMGToValue(optarg);
+            fprintf(stderr, "index memory-size = %ld\n",
+                settings.memory_size_index);
             break;
         case 'E':
+            settings.memory_size_datacache = KMGToValue(optarg);
+            fprintf(stderr, "data-cache memory-size = %ld\n",
+                settings.memory_size_datacache);
+            break;
+        case 'F':
             settings.db_path = optarg;
             break;
         case 'T':
-            settings.num_shards = atoi(optarg);
+            settings.db_storage_size_str= optarg;
             break;
         case 'I':
             unit = optarg[strlen(optarg)-1];
@@ -5438,12 +5451,30 @@ int main (int argc, char **argv) {
       printf("Must specify DB path!\n");
       exit(EXIT_FAILURE);
     }
-    dbHandler= OpenKVStore(settings.db_path,
-                           settings.num_shards,
-                           settings.block_cache_MB);
+    char *dirs[100];
+    char *dir_sizes_str[100];
+    size_t dir_sizes[100];
+    int num_dirs = SplitString(settings.db_path, ",", dirs, 100);
+    int num_sizes = SplitString(settings.db_storage_size_str, ",", dir_sizes_str, 100);
+    if (num_dirs != num_sizes) {
+      printf("num_dirs %d != num_sizes %d\n", num_dirs, num_sizes);
+      exit(EXIT_FAILURE);
+    }
+    for (int i = 0; i < num_sizes; i++) {
+      dir_sizes[i] = KMGToValue(dir_sizes_str[i]);
+    }
+
+    dbHandler= OpenKVStore(dirs,
+                           num_dirs,
+                           dir_sizes,
+                           settings.memory_size_index,
+                           settings.memory_size_datacache);
     assert(dbHandler!= NULL);
-    printf("init KVStore %s, shards = %d, block_cache %d MB\n",
-           settings.db_path, settings.num_shards, settings.block_cache_MB);
+    printf("init KVStore in %d dirs, reserved memory-index %ld, "
+           "memory-datacache %ld\n",
+           num_dirs,
+           settings.memory_size_index,
+           settings.memory_size_datacache);
     sprintf(tmpSuffix, "dummykey 0 1020\r\n");
     memset(tmpValue, 'A', 4000);
     tmpValue[1020] = '\r';

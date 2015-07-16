@@ -1,21 +1,32 @@
 #include <assert.h>
+#include <dirent.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <pthread.h>
+#include <sched.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "debug.h"
 #include "kvclient.h"
 
-
-// dbpath contains multiple dir-names, separated by ",". DB will open multiple
-// shards across these dirs.
-void* OpenKVStore(char* dbpath, int numShards, int cacheMB) {
-  return OpenDB(dbpath, numShards, cacheMB);
+void* OpenKVStore(char* paths[],
+                  int number_paths,
+                  size_t storage_sizes[],
+                  size_t memory_for_index,
+                  size_t memory_for_datacache) {
+  return OpenSSDCache(paths,
+                      number_paths,
+                      storage_sizes,
+                      memory_for_index,
+                      memory_for_datacache);
 }
 
 void CloseKVStore(void* handler) {
-  CloseDB(handler);
+  CloseSSDCache(handler);
 }
 
 /**
@@ -23,21 +34,16 @@ void CloseKVStore(void* handler) {
  * Return:
  *    0 on success, non-0 otherwise.
  */
-int KVPut(void* dbHandler, item *it) {
-  KVRequest request;
-  memset(&request, 0, sizeof(request));
-  request.type = PUT;
-  request.key = ITEM_key(it);
-  request.keylen = it->nkey;
-  request.value = ITEM_data(it);
-  request.vlen = it->nbytes;
-
-  int ret = KVRunCommand(dbHandler, &request, 1);
-  if (ret == 1) {
-    return 0;
-  } else {
-    return -1;
-  }
+int KVPut(void* handler, item *it) {
+  dbg("will call KVStore put: %s(%d), exptime %d.\n",
+      ITEM_key(it), it->nkey, it->exptime);
+  //return PutItem(handler, (void*)it);
+  return Put(handler,
+             ITEM_key(it),
+             it->nkey,
+             ITEM_data(it),
+             it->nbytes,
+             it->exptime);
 }
 
 /**
@@ -50,121 +56,80 @@ int KVPut(void* dbHandler, item *it) {
  * Return:
  *    Number of items successfully retrieved from kv store.
  */
-int KVGet(void* dbHandler,
+int KVGet(void* handler,
           KVRequest* requests,
-          int numRequests,
-          item** resultItems) {
-  item* it;
-  int validItems = 0;
+          int num_requests,
+          item** result_items) {
+  int valid_items = 0;
 
-  dbg("will fetch %d objs...\n", numRequests);
-  KVRunCommand(dbHandler, requests, numRequests);
-
-  ////////////////
-#if 0
-  for (int i = 0; i < numRequests; i++) {
+  for (int i = 0; i < num_requests; i++) {
+    void* data;
+    size_t data_size;
     KVRequest *p = requests + i;
-    if (p->retcode != SUCCESS) {
-      dbg("get key %s failed, retcode %d\n", p->key, p->retcode);
+    int ret = Get(handler, p->key, p->keylen, &data, &data_size);
+
+    if (ret != HCD_OK) {
       continue;
     }
-    ReleaseMemory(p->value);
-  }
-  return 0;
-#endif
 
-  for (int i = 0; i < numRequests; i++) {
-    KVRequest *p = requests + i;
-    if (p->retcode != SUCCESS) {
-      dbg("get key %s failed, retcode %d\n", p->key, p->retcode);
-      continue;
-    }
     int flags = 0;
-    // TODO: parse exptime from data.
-    int exptime = 1000;
-    it = item_alloc((char*)p->key, p->keylen, flags, exptime, (int)(p->vlen));
+    // KVstore has examed the exptime. We don't care about exp-time here.
+    item* it = item_alloc((char*)p->key, p->keylen, flags, 0, (int)(data_size));
     if (it) {
-      memcpy(ITEM_data(it), p->value, p->vlen);
-      dbg("fetched an item, nkey %d, vlen %ld, size = %ld\n", p->keylen, p->vlen, ITEM_ntotal(it));
-      //dump_item(it);
-      //free(p->value);
-      ReleaseMemory(p->value);
-      resultItems[validItems] = it;
-      validItems++;
+      memcpy(ITEM_data(it), data, data_size);
+      dbg("fetched an item: key %s(%d), data-size %ld, item-total-size = %ld\n",
+          (char*)p->key,
+          p->keylen,
+          data_size,
+          ITEM_ntotal(it));
+      ReleaseMemory(handler, data);
+      result_items[valid_items] = it;
+      valid_items++;
     } else {
-      err("failed to alloc memory for item %s, size %ld\n", p->key, p->vlen);
-      //free(p->value);
-      ReleaseMemory(p->value);
+      err("failed to alloc memory for item %s(%d), data size %ld\n",
+          p->key,
+          p->keylen,
+          data_size);
+      ReleaseMemory(handler, data);
     }
   }
 
-  //////////
-#if 0
-  for (int i = 0; i < validItems; i++) {
-    it = resultItems[i];
-    item_remove(it);
-  }
-  validItems = 0;
-#endif
-  //////////////////////
-
-  return validItems;
+  return valid_items;
 }
 
 /**
  * Delete object.
  * Return:
- *    the object's size if it exists.  < 0 if the obj does not exist.
+ *    0 if the obj exists and is deleted.
+ *    1 if the obj not exists before delete.
  */
-int KVDelete(void* dbHandler, char* key, int keylen) {
-  KVRequest getrqst;
-  memset(&getrqst, 0, sizeof(getrqst));
-  getrqst.type = GET;
-  getrqst.key = key;
-  getrqst.keylen = keylen;
-  item *its[1];
-  int numItems = KVGet(dbHandler, &getrqst, 1, its);
-  if (numItems != 1) {
-    dbg("unable to find key %s\n", key);
-    return -1;
-  }
-
-  KVRequest request;
-  memset(&request, 0, sizeof(request));
-  request.type = DELETE;
-  request.key = key;
-  request.keylen = keylen;
-
-  KVRunCommand(dbHandler, &request, 1);
-  dbg("delete key %s ret %d\n", key, request.retcode);
-  int vlen = (int)its[0]->nbytes;
-  item_remove(its[0]);
-  return request.retcode == SUCCESS ? vlen : -1;
+int KVDelete(void* handler, char* key, int keylen) {
+  return Delete(handler, key, keylen);
 }
 
-size_t GetDataSize(void* dbHandler) {
+size_t GetDataSize(void* handler) {
   KVRequest rqst;
   memset(&rqst, 0, sizeof(rqst));
   rqst.type = GET_DATA_SIZE;
 
-  KVRunCommand(dbHandler, &rqst, 1);
+  KVRunCommand(handler, &rqst, 1);
   return rqst.vlen;
 }
 
-size_t GetNumberOfRecords(void* dbHandler) {
+size_t GetNumberOfRecords(void* handler) {
   KVRequest rqst;
   memset(&rqst, 0, sizeof(rqst));
   rqst.type = GET_NUMBER_RECORDS;
 
-  KVRunCommand(dbHandler, &rqst, 1);
+  KVRunCommand(handler, &rqst, 1);
   return rqst.vlen;
 }
 
-size_t GetMemoryUsage(void* dbHandler) {
+size_t GetMemoryUsage(void* handler) {
   KVRequest rqst;
   memset(&rqst, 0, sizeof(rqst));
   rqst.type = GET_MEMORY_USAGE;
 
-  KVRunCommand(dbHandler, &rqst, 1);
+  KVRunCommand(handler, &rqst, 1);
   return rqst.vlen;
 }
