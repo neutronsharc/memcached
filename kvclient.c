@@ -107,6 +107,14 @@ int KVDelete(void* handler, char* key, int keylen) {
   return Delete(handler, key, keylen);
 }
 
+void KVGetSlabclassStatsStr(void* handler, char* buf, int bufsize) {
+  GetSlabclassStatsStr(handler, buf, bufsize);
+}
+
+void KVGetStatsStr(void* handler, char* buf, int bufsize) {
+  GetStatsStr(handler, buf, bufsize);
+}
+
 size_t GetDataSize(void* handler) {
   KVRequest rqst;
   memset(&rqst, 0, sizeof(rqst));

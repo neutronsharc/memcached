@@ -31,4 +31,8 @@ size_t GetDataSize(void* handler);
 
 size_t GetMemoryUsage(void* handler);
 
+void KVGetSlabclassStatsStr(void* handler, char* buf, int bufsize);
+
+void KVGetStatsStr(void* handler, char* buf, int bufsize);
+
 #endif  // __KVCLIENT_H__

@@ -2678,6 +2678,16 @@ static void process_stat_settings(ADD_STAT add_stats, void *c) {
 }
 
 static void process_stat(conn *c, token_t *tokens, const size_t ntokens) {
+    char dk[5] = "dmmky";
+    int bufsize = 50000;
+    item* it = item_alloc(dk, 5, 0, 0, bufsize);
+    KVGetStatsStr(dbHandler, ITEM_data(it), bufsize);
+    out_string(c, ITEM_data(it));
+    memset(ITEM_data(it), 0, bufsize);
+    item_remove(it);
+    return;
+    ///////
+
     const char *subcommand = tokens[SUBCOMMAND_TOKEN].value;
     assert(c != NULL);
 
@@ -3650,6 +3660,15 @@ static void process_command(conn *c, char *command) {
       char outs[64];
       sprintf(outs, "%ld", size);
       out_string(c, outs);
+    } else if (ntokens == 2 &&
+            (strcmp(tokens[COMMAND_TOKEN].value, "slab_stats") == 0)) {
+      char dk[5] = "dmmky";
+      int bufsize = 50000;
+      item* it = item_alloc(dk, 5, 0, 0, bufsize);
+      KVGetSlabclassStatsStr(dbHandler, ITEM_data(it), bufsize);
+      out_string(c, ITEM_data(it));
+      memset(ITEM_data(it), 0, bufsize);
+      item_remove(it);
     } else {
         out_string(c, "ERROR");
     }
