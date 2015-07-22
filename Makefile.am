@@ -1,6 +1,6 @@
-bin_PROGRAMS = memcached
+bin_PROGRAMS = memcachedssdcache
 pkginclude_HEADERS = protocol_binary.h
-noinst_PROGRAMS = memcached-debug sizes testapp timedrun
+noinst_PROGRAMS = memcachedssdcache-debug sizes testapp timedrun
 
 BUILT_SOURCES=
 
@@ -11,7 +11,7 @@ timedrun_SOURCES = timedrun.c
 CFLAGS += -g -I/home/shawn/code/hmem-cache
 LIBS += /home/shawn/code/hmem-cache/lib/hcdkvlib.a -lbz2 -lpthread -lsnappy -lz -lrt -lstdc++ -laio
 
-memcached_SOURCES = memcached.c memcached.h \
+memcachedssdcache_SOURCES = memcached.c memcached.h \
                     hash.c hash.h \
                     slabs.c slabs.h \
                     items.c items.h \
@@ -23,26 +23,26 @@ memcached_SOURCES = memcached.c memcached.h \
                     kvclient.c kvclient.h debug.h
 
 if BUILD_CACHE
-memcached_SOURCES += cache.c
+memcachedssdcache_SOURCES += cache.c
 testapp_SOURCES += cache.c
 endif
 
 if BUILD_SOLARIS_PRIVS
-memcached_SOURCES += solaris_priv.c
+memcachedssdcache_SOURCES += solaris_priv.c
 endif
 
 if ENABLE_SASL
-memcached_SOURCES += sasl_defs.c
+memcachedssdcache_SOURCES += sasl_defs.c
 endif
 
-memcached_debug_SOURCES = $(memcached_SOURCES)
-memcached_CPPFLAGS = -DNDEBUG
-memcached_debug_LDADD = @PROFILER_LDFLAGS@
-memcached_debug_CFLAGS = @PROFILER_FLAGS@
+memcachedssdcache_debug_SOURCES = $(memcachedssdcache_SOURCES)
+memcachedssdcache_CPPFLAGS = -DNDEBUG
+memcachedssdcache_debug_LDADD = @PROFILER_LDFLAGS@
+memcachedssdcache_debug_CFLAGS = @PROFILER_FLAGS@
 
-memcached_LDADD =
-memcached_DEPENDENCIES =
-memcached_debug_DEPENDENCIES =
+memcachedssdcache_LDADD =
+memcachedssdcache_DEPENDENCIES =
+memcachedssdcache_debug_DEPENDENCIES =
 CLEANFILES=
 
 if BUILD_DTRACE
@@ -51,10 +51,10 @@ CLEANFILES += memcached_dtrace.h
 endif
 
 if DTRACE_INSTRUMENT_OBJ
-memcached_LDADD += memcached_dtrace.o
-memcached_DEPENDENCIES += memcached_dtrace.o
-memcached_debug_LDADD += memcached_debug_dtrace.o
-memcached_debug_DEPENDENCIES += memcached_debug_dtrace.o
+memcachedssdcache_LDADD += memcached_dtrace.o
+memcachedssdcache_DEPENDENCIES += memcached_dtrace.o
+memcachedssdcache_debug_LDADD += memcached_debug_dtrace.o
+memcachedssdcache_debug_DEPENDENCIES += memcached_debug_dtrace.o
 CLEANFILES += memcached_dtrace.o memcached_debug_dtrace.o
 endif
 
