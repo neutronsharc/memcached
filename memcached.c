@@ -890,7 +890,7 @@ static void complete_nread_ascii(conn *c) {
       stats.total_items += 1;
       STATS_UNLOCK();
       /////////////////////////////////////////
-      ret = (kvret == HCD_OK) ? STORED : NOT_STORED;
+      ret = (kvret == SSD_OK) ? STORED : NOT_STORED;
 
 #ifdef ENABLE_DTRACE
       uint64_t cas = ITEM_get_cas(it);

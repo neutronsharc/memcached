@@ -2,7 +2,7 @@
 #define __KVCLIENT_H__
 
 #include "memcached.h"
-#include "hcderrno.h"
+#include "ssderrno.h"
 #include "kvinterface.h"
 
 // Below are routines to access KV store.

@@ -68,7 +68,7 @@ int KVGet(void* handler,
     KVRequest *p = requests + i;
     int ret = Get(handler, p->key, p->keylen, &data, &data_size);
 
-    if (ret != HCD_OK) {
+    if (ret != SSD_OK) {
       continue;
     }
 

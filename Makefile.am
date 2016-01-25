@@ -8,8 +8,8 @@ testapp_SOURCES = testapp.c util.c util.h
 
 timedrun_SOURCES = timedrun.c
 
-CFLAGS += -g -I/home/shawn/code/hmem-cache
-LIBS += /home/shawn/code/hmem-cache/lib/hcdkvlib.a -lbz2 -lpthread -lsnappy -lz -lrt -lstdc++ -laio
+CFLAGS += -g -I../hmem-cache/hmem
+LIBS += -L../hmem-cache/hmem -lssdcache -lbz2 -lpthread -lsnappy -lz -lrt -lstdc++ -laio
 
 memcachedssdcache_SOURCES = memcached.c memcached.h \
                     hash.c hash.h \
